@@ -125,6 +125,11 @@ impl Command {
         tracing::debug!("Config: {cfg:?}");
         Ok(cfg)
     }
+
+    pub async fn get_flake_url(flake_ref: &FlakeRef) -> anyhow::Result<FlakeUrl> {
+        let url = flake_ref.to_flake_url().await?;
+        Ok(url)
+    }
 }
 
 #[derive(Parser, Debug)]

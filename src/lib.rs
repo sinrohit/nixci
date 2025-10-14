@@ -9,15 +9,15 @@ use clap::CommandFactory;
 use clap_complete::generate;
 use std::collections::HashSet;
 use std::io;
+use std::path::PathBuf;
 
 use cli::{BuildConfig, CliArgs};
-use colored::Colorize;
 use nix::{
-    devour_flake::DevourFlakeOutput,
+    eval::NixEvalJobsCmd,
     nix_store::{DrvOut, NixStoreCmd, StorePath},
 };
 use nix_health::{traits::Checkable, NixHealth};
-use nix_rs::{command::NixCmd, config::NixConfig, flake::url::FlakeUrl, info::NixInfo};
+use nix_rs::{flake::url::FlakeUrl, info::NixInfo};
 use tracing::instrument;
 
 /// Run nixci on the given [CliArgs], returning the built outputs in sorted order.
@@ -27,21 +27,14 @@ pub async fn nixci(args: CliArgs) -> anyhow::Result<Vec<StorePath>> {
 
     match args.command {
         cli::Command::Build(build_cfg) => {
-            let cfg = cli::Command::get_config(&args.nixcmd, &build_cfg.flake_ref).await?;
+            let flake_url = cli::Command::get_flake_url(&build_cfg.flake_ref).await?;
             let nix_info = NixInfo::from_nix(&args.nixcmd)
                 .await
                 .with_context(|| "Unable to gather nix info")?;
             // First, run the necessary health checks
-            check_nix_version(&cfg.flake_url, &nix_info).await?;
+            check_nix_version(&flake_url, &nix_info).await?;
             // Then, do the build
-            nixci_build(
-                &args.nixcmd,
-                args.verbose,
-                &build_cfg,
-                &cfg,
-                &nix_info.nix_config,
-            )
-            .await
+            nixci_build(&build_cfg, flake_url).await
         }
         cli::Command::DumpGithubActionsMatrix {
             systems, flake_ref, ..
@@ -61,26 +54,32 @@ pub async fn nixci(args: CliArgs) -> anyhow::Result<Vec<StorePath>> {
 }
 
 async fn nixci_build(
-    cmd: &NixCmd,
-    verbose: bool,
     build_cfg: &BuildConfig,
-    cfg: &config::Config,
-    nix_config: &NixConfig,
+    flake_url: FlakeUrl,
 ) -> anyhow::Result<Vec<StorePath>> {
-    let mut all_outs = HashSet::new();
+    let jobs = NixEvalJobsCmd.run_nix_eval_jobs(&flake_url.0).await?;
 
-    let all_devour_flake_outs = nixci_subflakes(cmd, verbose, build_cfg, cfg, nix_config).await?;
+    tracing::info!("🍎 Evaluation Complete!");
+    tracing::info!("⏱️ Scheduling {} Builds", jobs.len());
+
+    let mut result = Vec::<DrvOut>::new();
+
+    for job in &jobs {
+        tracing::info!("🛠️ Building {} for {}", job.attr, job.system);
+        let drv_out = DrvOut(PathBuf::from(job.drv_path.clone()));
+        let out = NixStoreCmd.nix_store_realise(drv_out).await?;
+        result.push(out);
+    }
+    let mut all_outs = HashSet::new();
 
     if build_cfg.print_all_dependencies {
         let all_deps = NixStoreCmd
-            .fetch_all_deps(all_devour_flake_outs.into_iter().collect())
+            .fetch_all_deps(result.into_iter().collect())
             .await?;
         all_outs.extend(all_deps.into_iter());
     } else {
-        let store_paths: HashSet<StorePath> = all_devour_flake_outs
-            .into_iter()
-            .map(DrvOut::as_store_path)
-            .collect();
+        let store_paths: HashSet<StorePath> =
+            result.into_iter().map(DrvOut::as_store_path).collect();
         all_outs.extend(store_paths);
     }
 
@@ -89,68 +88,6 @@ async fn nixci_build(
     }
 
     Ok(all_outs.into_iter().collect())
-}
-
-async fn nixci_subflakes(
-    cmd: &NixCmd,
-    verbose: bool,
-    build_cfg: &BuildConfig,
-    cfg: &config::Config,
-    nix_config: &NixConfig,
-) -> anyhow::Result<HashSet<DrvOut>> {
-    let mut result = HashSet::new();
-    let systems = build_cfg.get_systems(cmd, nix_config).await?;
-
-    for (subflake_name, subflake) in &cfg.subflakes.0 {
-        let name = format!("{}.{}", cfg.name, subflake_name).italic();
-        if cfg
-            .selected_subflake
-            .as_ref()
-            .is_some_and(|s| s != subflake_name)
-        {
-            tracing::info!("🍊 {} {}", name, "skipped (deselected out)".dimmed());
-            continue;
-        }
-        tracing::info!("🍎 {}", name);
-        if subflake.can_build_on(&systems) {
-            let outs = nixci_subflake(
-                cmd,
-                verbose,
-                build_cfg,
-                &cfg.flake_url,
-                subflake_name,
-                subflake,
-            )
-            .await?;
-            result.extend(outs.0);
-        } else {
-            tracing::info!(
-                "🍊 {} {}",
-                name,
-                "skipped (cannot build on this system)".dimmed()
-            );
-        }
-    }
-
-    Ok(result)
-}
-
-#[instrument(skip(build_cfg, url))]
-async fn nixci_subflake(
-    cmd: &NixCmd,
-    verbose: bool,
-    build_cfg: &BuildConfig,
-    url: &FlakeUrl,
-    subflake_name: &str,
-    subflake: &config::SubFlakish,
-) -> anyhow::Result<DevourFlakeOutput> {
-    if subflake.override_inputs.is_empty() {
-        nix::lock::nix_flake_lock_check(cmd, &url.sub_flake_url(subflake.dir.clone())).await?;
-    }
-
-    let nix_args = subflake.nix_build_args_for_flake(build_cfg, url);
-    let outs = nix::devour_flake::devour_flake(cmd, verbose, nix_args).await?;
-    Ok(outs)
 }
 
 pub async fn check_nix_version(flake_url: &FlakeUrl, nix_info: &NixInfo) -> anyhow::Result<()> {

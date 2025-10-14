@@ -6,7 +6,9 @@ use std::{fmt, path::PathBuf};
 use anyhow::Result;
 use nix_rs::command::{CommandError, NixCmdError};
 use serde::{Deserialize, Serialize};
+use std::process::Stdio;
 use thiserror::Error;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 /// Nix derivation output path
@@ -145,6 +147,39 @@ impl NixStoreCmd {
             // TODO(refactor): see above
             let stderr = Some(String::from_utf8_lossy(&out.stderr).to_string());
             let exit_code = out.status.code();
+            Err(CommandError::ProcessFailed { stderr, exit_code }.into())
+        }
+    }
+
+    pub async fn nix_store_realise(&self, drv_path: DrvOut) -> Result<DrvOut, NixStoreCmdError> {
+        let mut cmd = self.command();
+        cmd.args(["--realise", drv_path.0.to_string_lossy().as_ref()]);
+        nix_rs::command::trace_cmd(&cmd);
+
+        let mut output_fut = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+
+        let stderr_handle = output_fut.stderr.take().unwrap();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr_handle).lines();
+            while let Some(line) = reader.next_line().await.expect("read stderr") {
+                if line.starts_with("• Added input") {
+                    // Consume the input logging itself
+                    reader.next_line().await.expect("read stderr");
+                    continue;
+                } else if line.starts_with("warning: not writing modified lock file of flake") {
+                    continue;
+                }
+                eprintln!("{}", line);
+            }
+        });
+
+        let output = output_fut.wait_with_output().await?;
+        if output.status.success() {
+            let stdout = String::from_utf8(output.stdout)?;
+            Ok(DrvOut(PathBuf::from(stdout.trim())))
+        } else {
+            let exit_code = output.status.code();
+            let stderr = Some(String::from_utf8_lossy(&output.stderr).to_string());
             Err(CommandError::ProcessFailed { stderr, exit_code }.into())
         }
     }
