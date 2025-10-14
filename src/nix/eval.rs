@@ -6,6 +6,11 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+/// Absolute path to the nix-eval-jobs executable
+///
+/// We expect this environment to be set in Nix build and shell.
+pub const NIX_EVAL_JOBS: &str = env!("NIX_EVAL_JOBS");
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NixEvalJob {
     pub attr: String,
@@ -25,7 +30,8 @@ pub struct NixEvalJobsCmd;
 
 impl NixEvalJobsCmd {
     pub fn command(&self) -> Command {
-        let mut cmd = Command::new("nix-eval-jobs");
+        let nix_eval_jobs = env!("NIX_EVAL_JOBS").to_string();
+        let mut cmd = Command::new(nix_eval_jobs);
         cmd.kill_on_drop(true);
         cmd
     }

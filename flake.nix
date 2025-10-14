@@ -70,6 +70,7 @@
                 pkgs.openssl
               ];
             DEVOUR_FLAKE = inputs.devour-flake;
+            NIX_EVAL_JOBS = lib.getExe pkgs.nix-eval-jobs;
           };
 
           pre-commit = {
@@ -105,6 +106,7 @@
             ];
             shellHook = ''
               export DEVOUR_FLAKE=${inputs.devour-flake}
+              export NIX_EVAL_JOBS=${lib.getExe pkgs.nix-eval-jobs}
             '';
             packages = [
               pkgs.cargo-watch
