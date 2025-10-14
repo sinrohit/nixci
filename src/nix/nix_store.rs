@@ -153,7 +153,12 @@ impl NixStoreCmd {
 
     pub async fn nix_store_realise(&self, drv_path: DrvOut) -> Result<DrvOut, NixStoreCmdError> {
         let mut cmd = self.command();
-        cmd.args(["--realise", drv_path.0.to_string_lossy().as_ref()]);
+        cmd.args([
+            "--realise",
+            drv_path.0.to_string_lossy().as_ref(),
+            "--log-format",
+            "bar-with-logs",
+        ]);
         nix_rs::command::trace_cmd(&cmd);
 
         let mut output_fut = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
