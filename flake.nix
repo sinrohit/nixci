@@ -9,15 +9,11 @@
     rust-flake.inputs.nixpkgs.follows = "nixpkgs";
     cargo-doc-live.url = "github:srid/cargo-doc-live";
     process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
-    just-flake.url = "github:juspay/just-flake";
-    pre-commit-hooks-nix = {
-      url = "github:cachix/pre-commit-hooks.nix";
+    git-hooks-nix = {
+      url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-stable.follows = "nixpkgs";
     };
-
-    # Dev tools
-    treefmt-nix.url = "github:numtide/treefmt-nix";
 
     # App dependenciues
     devour-flake.url = "github:srid/devour-flake";
@@ -37,9 +33,7 @@
         inputs.rust-flake.flakeModules.nixpkgs
         # inputs.cargo-doc-live.flakeModule
         # inputs.process-compose-flake.flakeModule
-        inputs.pre-commit-hooks-nix.flakeModule
-        inputs.treefmt-nix.flakeModule
-        inputs.just-flake.flakeModule
+        inputs.git-hooks-nix.flakeModule
       ];
 
       perSystem =
@@ -82,15 +76,10 @@
             check.enable = true;
             settings = {
               hooks = {
-                treefmt.enable = true;
-                convco.enable = true;
+                nixfmt-rfc-style.enable = true;
+                rustfmt.enable = true;
               };
             };
-          };
-
-          just-flake.features = {
-            treefmt.enable = true;
-            convco.enable = true;
           };
 
           # Flake outputs
@@ -112,8 +101,7 @@
             name = "nixci";
             inputsFrom = [
               self'.devShells.rust
-              config.treefmt.build.devShell
-              config.just-flake.outputs.devShell
+              config.pre-commit.devShell
             ];
             shellHook = ''
               export DEVOUR_FLAKE=${inputs.devour-flake}
@@ -121,18 +109,8 @@
             packages = [
               pkgs.cargo-watch
               #config.process-compose.cargo-doc-live.outputs.package
-              config.pre-commit.settings.tools.convco
+              pkgs.rust-analyzer
             ];
-          };
-
-          # Add your auto-formatters here.
-          # cf. https://numtide.github.io/treefmt/
-          treefmt.config = {
-            projectRootFile = "flake.nix";
-            programs = {
-              nixpkgs-fmt.enable = true;
-              rustfmt.enable = true;
-            };
           };
         };
     };
