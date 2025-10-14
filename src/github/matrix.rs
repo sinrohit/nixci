@@ -23,7 +23,7 @@ impl GitHubMatrix {
                 subflakes
                     .0
                     .iter()
-                    .filter(|&(_k, v)| v.can_build_on(&[system.clone()]))
+                    .filter(|&(_k, v)| v.can_build_on(std::slice::from_ref(system)))
                     .map(|(k, _v)| GitHubMatrixRow {
                         system: system.clone(),
                         subflake: k.clone(),

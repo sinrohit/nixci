@@ -97,7 +97,7 @@ impl NixStoreCmd {
         cmd.args([
             "--query",
             "--valid-derivers",
-            &out_path.to_string_lossy().as_ref(),
+            out_path.to_string_lossy().as_ref(),
         ]);
         nix_rs::command::trace_cmd(&cmd);
         let out = cmd.output().await?;
@@ -127,7 +127,7 @@ impl NixStoreCmd {
             "--query",
             "--requisites",
             "--include-outputs",
-            &drv_path.0.to_string_lossy().as_ref(),
+            drv_path.0.to_string_lossy().as_ref(),
         ]);
         nix_rs::command::trace_cmd(&cmd);
         let out = cmd.output().await?;
