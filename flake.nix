@@ -47,28 +47,13 @@
         }:
         {
           rust-project.crates."nixci".crane.args = {
-            nativeBuildInputs =
-              with pkgs;
-              with pkgs.darwin.apple_sdk.frameworks;
-              lib.optionals stdenv.isDarwin [
-                Security
-                SystemConfiguration
-              ]
-              ++ [
-                libiconv
-                pkg-config
-              ];
-            buildInputs =
-              lib.optionals pkgs.stdenv.isDarwin (
-                with pkgs.darwin.apple_sdk.frameworks;
-                [
-                  IOKit
-                  CoreFoundation
-                ]
-              )
-              ++ lib.optionals pkgs.stdenv.isLinux [
-                pkgs.openssl
-              ];
+            nativeBuildInputs = with pkgs; [
+              libiconv
+              pkg-config
+            ];
+            buildInputs = lib.optionals pkgs.stdenv.isLinux [
+              pkgs.openssl
+            ];
             DEVOUR_FLAKE = inputs.devour-flake;
             NIX_EVAL_JOBS = lib.getExe pkgs.nix-eval-jobs;
           };
@@ -111,7 +96,6 @@
             packages = [
               pkgs.cargo-watch
               #config.process-compose.cargo-doc-live.outputs.package
-              pkgs.rust-analyzer
             ];
           };
         };
