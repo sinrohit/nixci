@@ -17,7 +17,11 @@ use nix::{
     nix_store::{DrvOut, NixStoreCmd, StorePath},
 };
 use nix_health::{traits::Checkable, NixHealth};
-use nix_rs::{flake::url::FlakeUrl, info::NixInfo};
+use nix_rs::{
+    config::NixConfig,
+    flake::{system::System, url::FlakeUrl},
+    info::NixInfo,
+};
 use tracing::instrument;
 
 /// Run nixci on the given [CliArgs], returning the built outputs in sorted order.
@@ -31,10 +35,7 @@ pub async fn nixci(args: CliArgs) -> anyhow::Result<Vec<StorePath>> {
             let nix_info = NixInfo::from_nix(&args.nixcmd)
                 .await
                 .with_context(|| "Unable to gather nix info")?;
-            // First, run the necessary health checks
-            check_nix_version(&flake_url, &nix_info).await?;
-            // Then, do the build
-            nixci_build(&build_cfg, flake_url).await
+            nixci_build(&build_cfg, flake_url, &nix_info.nix_config).await
         }
         cli::Command::DumpGithubActionsMatrix {
             systems, flake_ref, ..
@@ -53,11 +54,34 @@ pub async fn nixci(args: CliArgs) -> anyhow::Result<Vec<StorePath>> {
     }
 }
 
+fn get_flake_to_build(url: FlakeUrl, current_system: &System) -> anyhow::Result<FlakeUrl> {
+    let (flake_url, attr) = url.split_attr();
+    let nested_attr = attr.as_list();
+
+    let result_url = match nested_attr.as_slice() {
+        // Case 1: `.#checks` -> `.#checks.current_system`
+        [name] => FlakeUrl(format!("{}#{}.{}", flake_url.0, name, current_system)),
+        // Case 2 & 3: `.#checks.x86_64-linux` or `.#packages.aarch64-darwin.default`
+        // Return as-is since system is already specified
+        [_, system_or_more @ ..] if !system_or_more.is_empty() => {
+            url.clone() // Return the original URL unchanged
+        }
+        [] => FlakeUrl(format!("{}#checks.{}", flake_url.0, current_system)),
+        _ => anyhow::bail!("Invalid flake URL: {}", url.0),
+    };
+
+    Ok(result_url)
+}
+
 async fn nixci_build(
     build_cfg: &BuildConfig,
     flake_url: FlakeUrl,
+    nix_config: &NixConfig,
 ) -> anyhow::Result<Vec<StorePath>> {
-    let jobs = NixEvalJobsCmd.run_nix_eval_jobs(&flake_url.0).await?;
+    let flake = get_flake_to_build(flake_url, &nix_config.system.value)?;
+    let jobs = NixEvalJobsCmd
+        .run_nix_eval_jobs(&flake.0, build_cfg.extra_nix_build_args.clone())
+        .await?;
 
     tracing::info!("🍎 Evaluation Complete!");
     tracing::info!("⏱️ Scheduling {} Builds", jobs.len());

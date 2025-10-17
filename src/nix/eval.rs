@@ -38,10 +38,15 @@ impl NixEvalJobsCmd {
 }
 
 impl NixEvalJobsCmd {
-    pub async fn run_nix_eval_jobs(&self, flake_ref: &str) -> Result<Vec<NixEvalJob>> {
+    pub async fn run_nix_eval_jobs(
+        &self,
+        flake_ref: &str,
+        extra_nix_build_args: Vec<String>,
+    ) -> Result<Vec<NixEvalJob>> {
         tracing::info!("{}", "🍏 Running Evaluation".to_string().bold());
         let mut cmd = self.command();
         cmd.args(["--flake", flake_ref]);
+        cmd.args(&extra_nix_build_args);
 
         nix_rs::command::trace_cmd(&cmd);
         let mut child = cmd

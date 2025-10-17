@@ -151,7 +151,6 @@ pub struct BuildConfig {
 
     /// Additional arguments to pass through to `nix build`
     #[arg(last = true, default_values_t = vec![
-    "--refresh".to_string(),
     "-j".to_string(),
     "auto".to_string(),
     ])]
