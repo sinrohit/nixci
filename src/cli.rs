@@ -12,10 +12,7 @@ use nix_rs::{
 use crate::{
     config,
     github::pull_request::{PullRequest, PullRequestRef},
-    nix::{
-        devour_flake,
-        system_list::{SystemsList, SystemsListFlakeRef},
-    },
+    nix::system_list::{SystemsList, SystemsListFlakeRef},
 };
 
 /// A reference to some flake living somewhere
@@ -81,10 +78,6 @@ impl CliArgs {
     pub async fn preprocess(&mut self) -> anyhow::Result<()> {
         // Avoid using `--extra-experimental-features` if possible.
         self.nixcmd = self.nixcmd.with_flakes().await?;
-        // Adjust to devour_flake's expectations
-        if let Command::Build(build_cfg) = &mut self.command {
-            devour_flake::transform_override_inputs(&mut build_cfg.extra_nix_build_args);
-        }
         Ok(())
     }
 }
