@@ -12,7 +12,6 @@
     git-hooks-nix = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nixpkgs-stable.follows = "nixpkgs";
     };
 
     # App dependenciues
@@ -46,6 +45,11 @@
           ...
         }:
         {
+          # TODO: Disable doc for the time being.
+          rust-project.crates."nixci".autoWire = lib.mkForce [
+            "crate"
+            "clippy"
+          ];
           rust-project.crates."nixci".crane.args = {
             nativeBuildInputs = with pkgs; [
               libiconv

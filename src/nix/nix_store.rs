@@ -68,11 +68,14 @@ impl NixStoreCmd {
 }
 
 impl NixStoreCmd {
-    /// Fetch all build and runtime dependencies of given [devour_flake::DrvOut]s
+    /// Fetch all build and runtime dependencies of given derivation outputs.
     ///
-    /// This is done by querying the deriver of each output path from [devour_flake::DrvOut] using [nix_store_query_deriver] and
-    /// then querying all dependencies of each deriver using [nix_store_query_requisites_with_outputs].
-    /// Finally, all dependencies of each deriver are collected and returned as [Vec<StorePath>].
+    /// This is done by querying the deriver of each derivation output
+    /// using [NixStoreCmd::nix_store_query_deriver] and then querying all
+    /// dependencies of each deriver using
+    /// [NixStoreCmd::nix_store_query_requisites_with_outputs].  Finally, all
+    /// dependencies of each deriver are collected and returned as
+    /// `Vec<StorePath>`.
     pub async fn fetch_all_deps(
         &self,
         out_paths: Vec<DrvOut>,
